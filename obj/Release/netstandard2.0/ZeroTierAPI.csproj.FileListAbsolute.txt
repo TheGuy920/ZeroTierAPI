@@ -1,0 +1,12 @@
+C:\Users\Matthew\source\repos\ZeroTierAPI\bin\Release\netstandard2.0\ZeroTierAPI.deps.json
+C:\Users\Matthew\source\repos\ZeroTierAPI\bin\Release\netstandard2.0\ZeroTierAPI.dll
+C:\Users\Matthew\source\repos\ZeroTierAPI\bin\Release\netstandard2.0\ZeroTierAPI.pdb
+C:\Users\Matthew\source\repos\ZeroTierAPI\bin\Release\netstandard2.0\LibZeroTier.dll
+C:\Users\Matthew\source\repos\ZeroTierAPI\bin\Release\netstandard2.0\LibZeroTier.pdb
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.csprojAssemblyReference.cache
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.AssemblyInfoInputs.cache
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.AssemblyInfo.cs
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.csproj.CoreCompileInputs.cache
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.csproj.CopyComplete
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.dll
+C:\Users\Matthew\source\repos\ZeroTierAPI\obj\Release\netstandard2.0\ZeroTierAPI.pdb
