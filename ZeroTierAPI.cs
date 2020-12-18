@@ -13,7 +13,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Dynamic;
-using System.Text.RegularExpressions;
 
 namespace ZeroTier
 {
@@ -63,7 +62,7 @@ namespace ZeroTier
         {
             foreach (var network in NetworkList)
             {
-                if (network.NetworkName == id)
+                if (network.NetworkId == id)
                 {
                     return network;
                 }
@@ -72,13 +71,17 @@ namespace ZeroTier
         }
         public void PropertyChanged(ZeroTierNetwork Original, ZeroTierNetwork New)
         {
-            var newJson = JObject.Parse(JsonConvert.SerializeObject(New));
-            var oldJson = JObject.Parse(JsonConvert.SerializeObject(Original));
-            foreach (var item in oldJson)
+            try
             {
-                if (item.Value.ToString() != newJson.GetValue(item.Key).ToString())
-                    OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.GenericPropertyChange, Property = item.Key, OldValue = item.Value, NewValue = newJson.GetValue(item.Key) }, null);
+                var newJson = JObject.Parse(JsonConvert.SerializeObject(New));
+                var oldJson = JObject.Parse(JsonConvert.SerializeObject(Original));
+                foreach (var item in oldJson)
+                {
+                    if (item.Value.ToString() != newJson.GetValue(item.Key).ToString())
+                        OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.GenericPropertyChange, Property = item.Key, OldValue = item.Value, NewValue = newJson.GetValue(item.Key) }, null);
+                }
             }
+            catch { }
         }
         public class NetworkChangedEventArgs
         {
@@ -224,7 +227,7 @@ namespace ZeroTier
                 // generate new network id until the network id is unique
                 while (NetworkIds.Contains(NetworkId) || NetworkId.Length < 16)
                 {
-                    NetworkId = Math.Floor((new Random().NextDouble() + 0.01) * Math.Pow(10, 16)).ToString();
+                    NetworkId = Math.Floor((new Random().NextDouble() + 0.01) * MathF.Pow(10, 16)).ToString();
                 }
                 // setup new network json post
                 long CurrentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -241,13 +244,13 @@ namespace ZeroTier
                         EnableBroadcast = true,
                         Id = NetworkId,
                         IpAssignmentPools = new List<IpAssignmentPool>()
+                        {
+                            new IpAssignmentPool()
                             {
-                                new IpAssignmentPool()
-                                {
-                                    IpRangeStart = "10.0.0.0",
-                                    IpRangeEnd = "10.0.255.255"
-                                }
-                            },
+                                IpRangeStart = "10.0.0.0",
+                                IpRangeEnd = "10.0.255.255"
+                            }
+                        },
                         LastModified = CurrentTime,
                         Mtu = 2800,
                         MulticastLimit = 32,
@@ -256,44 +259,44 @@ namespace ZeroTier
                         RemoteTraceLevel = 0,
                         RemoteTraceTarget = null,
                         Routes = new List<Route>()
+                        {
+                            new Route()
                             {
-                                new Route()
-                                {
-                                    Target = "10.147.17.0/24"
-                                }
-                            },
+                                Target = "10.147.17.0/24"
+                            }
+                        },
                         Rules = new List<Rule>()
+                        {
+                            new Rule()
                             {
-                                new Rule()
-                                {
-                                    EtherType = 2048,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    EtherType = 2054,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    EtherType = 34525,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    Type = "ACTION_DROP"
-                                },
-                                new Rule()
-                                {
-                                    Type = "ACTION_ACCEPT"
-                                }
+                                EtherType = 2048,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
                             },
+                            new Rule()
+                            {
+                                EtherType = 2054,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
+                            },
+                            new Rule()
+                            {
+                                EtherType = 34525,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
+                            },
+                            new Rule()
+                            {
+                                Type = "ACTION_DROP"
+                            },
+                            new Rule()
+                            {
+                                Type = "ACTION_ACCEPT"
+                            }
+                        },
                         Tags = new List<object>(),
                         V4AssignMode = new V4AssignMode()
                         {
@@ -328,18 +331,17 @@ namespace ZeroTier
                 try
                 {
                     res.Result.EnsureSuccessStatusCode();
-                    Debug.WriteLine("Response " + res.Result.Content.ReadAsStringAsync().Result + Environment.NewLine);
+                    //Debug.WriteLine("Response " + res.Result.Content.ReadAsStringAsync().Result + Environment.NewLine);
                     var netId = JObject.Parse(res.Result.Content.ReadAsStringAsync().Result);
                     NetworkId = netId["id"].ToString();
-                    Debug.WriteLine(NetworkId);
+                    // Debug.WriteLine(NetworkId);
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine("Error " + res + "\r\nError " +
-                    ex.ToString());
+                    //Debug.WriteLine("Error " + res + "\r\nError " + ex.ToString());
                 }
                 // log network response
-                Debug.WriteLine("Response: {0}", res);
+                //Debug.WriteLine("Response: {0}", res);
             }
             catch (Exception ex)
             {
