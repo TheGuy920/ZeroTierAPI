@@ -27,34 +27,65 @@ namespace ZeroTier
     }
     public class ZeroTeirAPI
     {
-        public Thread APIupdater;
-        public ZeroTeirAPI()
-        {
-            APIupdater = new Thread(CheckForPropertyUpdate);
-            APIupdater.Start();
-        }
         public void CheckForPropertyUpdate()
         {
             List<ZeroTierNetwork> Networks = new List<ZeroTierNetwork>();
             while (this.ZeroTeirHandler == null) { }
-            foreach (var network in this.ZeroTeirHandler.GetNetworks())
-                Networks.Add(network);
-            while (true)
+            Networks.AddRange(this.ZeroTeirHandler.GetNetworks());
+            while (this.ZeroTeirHandler != null)
             {
-                if (this.ZeroTeirHandler != null)
+                if (Process.GetProcessesByName("ZeroTier One").Length <= 0)
                 {
-                    foreach (var network in Networks)
+                    this.ZeroTeirHandler = null;
+                    break;
+                }
+                List<ZeroTierNetwork> API_Network_List = new List<ZeroTierNetwork>();
+                API_Network_List.AddRange(this.ZeroTeirHandler.GetNetworks());
+                List<ZeroTierNetwork> NetworksCopy = new List<ZeroTierNetwork>();
+                NetworksCopy.AddRange(Networks);
+                foreach (ZeroTierNetwork OldNet in NetworksCopy)
+                {
+                    ZeroTierNetwork GetNetId = GetNetworkById(OldNet.NetworkId, API_Network_List);
+                    if (GetNetId == null)
                     {
-                        var NewNet = GetNetworkById(network.NetworkId, this.ZeroTeirHandler.GetNetworks());
-                        if (GetNetworkById(network.NetworkId, this.ZeroTeirHandler.GetNetworks()) != network)
+                        Networks.Remove(OldNet);
+                        OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.NetworkListChanged, Property = "Network Removed", Value = OldNet }, null);
+                        if (OldNet.IsConnected)
+                            OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.LeftNetwork, Property = "Left Network", Value = OldNet.NetworkId }, null);
+                    }
+                }
+                foreach (ZeroTierNetwork NewNet in API_Network_List)
+                {
+                    ZeroTierNetwork GetNetId = GetNetworkById(NewNet.NetworkId, Networks);
+                    if (GetNetId == null)
+                    {
+                        Networks.Add(NewNet);
+                        OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.NetworkListChanged, Property = "Network Added", Value = NewNet }, null);
+                        if (NewNet.IsConnected)
                         {
-                            PropertyChanged(network, NewNet);
+                            OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.JoinedNetwork, Property = "Joined Network", Value = NewNet.NetworkId }, null);
+                            OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.OnlineStatusChanged, Property = "status", Value = NewNet.NetworkStatus }, null);
                         }
                     }
-                    Networks.Clear();
-                    Networks.AddRange(this.ZeroTeirHandler.GetNetworks());
+                    else
+                    {
+                        bool ValWasChanged = false;
+                        var NewNetJson = JObject.Parse(JsonConvert.SerializeObject(NewNet));
+                        foreach (var Property in JObject.Parse(JsonConvert.SerializeObject(GetNetId)))
+                        {
+                            string NewVal = NewNetJson.GetValue(Property.Key).ToString();
+                            if (Property.Value.ToString() != NewVal)
+                            {
+                                ValWasChanged = true;
+                                OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = GetChangedStatus(Property.Key), Property = Property.Key, Value = NewVal }, null);
+                            }
+                        }
+                        if (ValWasChanged)
+                            Networks[Networks.IndexOf(GetNetId)] = NewNet;
+                    }
                 }
             }
+            OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.UnexpectedShutdown, Property = "Network", Value = "Connection Lost" }, null);
         }
         public ZeroTierNetwork GetNetworkById(string id, List<ZeroTierNetwork> NetworkList)
         {
@@ -67,26 +98,34 @@ namespace ZeroTier
             }
             return null;
         }
-        public void PropertyChanged(ZeroTierNetwork Original, ZeroTierNetwork New)
+        public StatusChanged GetChangedStatus(string Object)
         {
-            try
+            if (Object == "status")
+                Debug.WriteLine("Status Change!");
+            switch (Object)
             {
-                var newJson = JObject.Parse(JsonConvert.SerializeObject(New));
-                var oldJson = JObject.Parse(JsonConvert.SerializeObject(Original));
-                foreach (var item in oldJson)
-                {
-                    if (item.Value.ToString() != newJson.GetValue(item.Key).ToString())
-                        OnNetworkStatusChanged(new NetworkChangedEventArgs() { Change = StatusChanged.GenericPropertyChange, Property = item.Key, OldValue = item.Value, NewValue = newJson.GetValue(item.Key) }, null);
-                }
+                case "name":
+                    return StatusChanged.NetworkPropertiesChanged;
+                case "status":
+                    return StatusChanged.OnlineStatusChanged;
+                case "type":
+                    return StatusChanged.NetworkPropertiesChanged;
+                case "broadcastEnabled":
+                    return StatusChanged.NetworkPropertiesChanged;
+                case "routes":
+                    return StatusChanged.NetworkPropertiesChanged;
+                case "allowManaged":
+                    return StatusChanged.NetworkPropertiesChanged;
+                default:
+                    return StatusChanged.GenericPropertyChange;
             }
-            catch { }
+
         }
         public class NetworkChangedEventArgs
         {
             public StatusChanged Change { get; set; }
             public string Property { get; set; }
-            public object OldValue { get; set; }
-            public object NewValue { get; set; }
+            public object Value { get; set; }
         }
         public event EventHandler NetworkStatusChanged;
         protected virtual void OnNetworkStatusChanged(NetworkChangedEventArgs args, EventArgs e)
@@ -111,6 +150,12 @@ namespace ZeroTier
         }
         public string NetworkId;
         public APIHandler ZeroTeirHandler;
+        Thread APIupdater;
+        public void NewApiCreated()
+        {
+            APIupdater = new Thread(CheckForPropertyUpdate);
+            APIupdater.Start();
+        }
         public string GetNetStatus()
         {
             try
@@ -119,7 +164,7 @@ namespace ZeroTier
             }
             catch
             {
-                return "API Handler Not Running!";
+                return "[ZeroTier] [API]: API Handler Not Running!";
             }
         }
         public string GetZeroStatus()
@@ -130,7 +175,7 @@ namespace ZeroTier
             }
             catch
             {
-                return "API Handler Not Running!";
+                return "[ZeroTier] [API]: API Handler Not Running!";
             }
         }
         public void StartServer(string Network = null)
@@ -139,7 +184,7 @@ namespace ZeroTier
         }
         public async Task StartServerAsync(string Network = null)
         {
-            Console.WriteLine("Locating ZeroTeir...");
+            Console.WriteLine("[ZeroTier] [API]: Locating ...");
             // start zero teir if it has not been done already
             Process[] Zero = Process.GetProcessesByName("ZeroTier One");
             if (Zero.Length == 0)
@@ -150,14 +195,22 @@ namespace ZeroTier
                 proccess.StartInfo.CreateNoWindow = true;
                 proccess.Start();
             }
-            Console.WriteLine("ZeroTeir Initialized!");
-            Console.WriteLine("Loading ZeroTeir API...");
+            Console.WriteLine("[ZeroTier] [API]: Initialized!");
+            Console.WriteLine("[ZeroTier] [API]: Loading API...");
             if (ZeroTeirHandler == null)
+            {
                 ZeroTeirHandler = new APIHandler();
-            Console.WriteLine("ZeroTeir API Loaded!");
+                NewApiCreated();
+                Console.WriteLine("[ZeroTier] [API]: API Created!");
+            }
+            else
+            {
+                Console.WriteLine("[ZeroTier] [API]: API Loaded!");
+            }
+
             if (Network == null)
                 Network = await Networking.CreateNetworkAsync();
-            Console.WriteLine("ZeroTeir P2P Network Created!");
+            Console.WriteLine("[ZeroTier] [API-NET]: P2P Network Created!");
             // leave any joined networks
             foreach (var LocalNet in ZeroTeirHandler.GetNetworks())
                 ZeroTeirHandler.LeaveNetwork(LocalNet.NetworkId);
@@ -171,7 +224,7 @@ namespace ZeroTier
                         Connected = true;
             }
             NetworkId = Network;
-            Console.WriteLine("ZeroTeir P2P Connection Established!");
+            Console.WriteLine("[ZeroTier] [Network]: P2P Connection Established!");
         }
         public void JoinServer(string NetworkId)
         {
@@ -182,14 +235,33 @@ namespace ZeroTier
             // get zero teir process(es) and kill em
             Process[] Zero = Process.GetProcessesByName("ZeroTier One");
             foreach (var item in Zero) { item.Kill(); item.WaitForExit(); }
-            Console.WriteLine("Stopped all ZeroTier processes");
+            Console.WriteLine("[ZeroTier] [API]: Stopped all ZeroTier processes");
             // delete network on website
             Networking.DeleteNetworkAsync(this.NetworkId);
-            Console.WriteLine("Deleted P2P Network");
+            Console.WriteLine("[ZeroTier] [API-NET]: Deleted P2P Network");
             // Delete all network history
             DeleteAllNonConnectedNetworks();
-            Console.WriteLine("Deleted Network History");
-            Console.WriteLine("ZeroTeir P2P Connection Removed");
+            Console.WriteLine("[ZeroTier] [Network]: Deleted Network History");
+            Console.WriteLine("[ZeroTier] [Network]: P2P Connection Removed");
+            this.ZeroTeirHandler = null;
+        }
+        public static HttpClient client = new HttpClient();
+        public async Task DeleteAllNetworks()
+        {
+            // setup headers
+            client.DefaultRequestHeaders.Accept.Clear();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", "XlOrMp71uEQdxFT1D0bzjkkBjJCOCbvA");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            // get network list
+            var Get = client.GetAsync("https://my.zerotier.com/api/network");
+            string content = await Get.Result.Content.ReadAsStringAsync();
+            var temp = JObject.Parse("{ \"Array\":" + content + "}");
+            // delete all networks
+            foreach (var item in temp["Array"])
+            {
+                var netid = item["id"].ToString();
+                WebApi.DeleteNetwork(netid);
+            }
         }
         public static void DeleteAllNonConnectedNetworks()
         {
@@ -242,13 +314,13 @@ namespace ZeroTier
                         EnableBroadcast = true,
                         Id = NetworkId,
                         IpAssignmentPools = new List<IpAssignmentPool>()
+                        {
+                            new IpAssignmentPool()
                             {
-                                new IpAssignmentPool()
-                                {
-                                    IpRangeStart = "10.0.0.0",
-                                    IpRangeEnd = "10.0.255.255"
-                                }
-                            },
+                                IpRangeStart = "10.10.10.0",
+                                IpRangeEnd = "10.10.10.254"
+                            }
+                        },
                         LastModified = CurrentTime,
                         Mtu = 2800,
                         MulticastLimit = 32,
@@ -257,44 +329,45 @@ namespace ZeroTier
                         RemoteTraceLevel = 0,
                         RemoteTraceTarget = null,
                         Routes = new List<Route>()
+                        {
+                            new Route()
                             {
-                                new Route()
-                                {
-                                    Target = "10.147.17.0/24"
-                                }
-                            },
+                                Target = "10.10.10.0/24",
+                                Via = "10.10.10.1"
+                            }
+                        },
                         Rules = new List<Rule>()
+                        {
+                            new Rule()
                             {
-                                new Rule()
-                                {
-                                    EtherType = 2048,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    EtherType = 2054,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    EtherType = 34525,
-                                    Not = true,
-                                    Or = false,
-                                    Type = "MATCH_ETHERTYPE"
-                                },
-                                new Rule()
-                                {
-                                    Type = "ACTION_DROP"
-                                },
-                                new Rule()
-                                {
-                                    Type = "ACTION_ACCEPT"
-                                }
+                                EtherType = 2048,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
                             },
+                            new Rule()
+                            {
+                                EtherType = 2054,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
+                            },
+                            new Rule()
+                            {
+                                EtherType = 34525,
+                                Not = true,
+                                Or = false,
+                                Type = "MATCH_ETHERTYPE"
+                            },
+                            new Rule()
+                            {
+                                Type = "ACTION_DROP"
+                            },
+                            new Rule()
+                            {
+                                Type = "ACTION_ACCEPT"
+                            }
+                        },
                         Tags = new List<object>(),
                         V4AssignMode = new V4AssignMode()
                         {
@@ -336,7 +409,7 @@ namespace ZeroTier
                 }
                 catch (Exception ex)
                 {
-                    //Debug.WriteLine("Error " + res + "\r\nError " + ex.ToString());
+                    Debug.WriteLine("Error " + res + "\r\nError " + ex.ToString());
                 }
                 // log network response
                 //Debug.WriteLine("Response: {0}", res);
@@ -355,7 +428,6 @@ namespace ZeroTier
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", "XlOrMp71uEQdxFT1D0bzjkkBjJCOCbvA");
             // delete network
             var Get = client.DeleteAsync("https://my.zerotier.com/api/network/" + NetworkId);
-            Debug.WriteLine(await Get.Result.Content.ReadAsStringAsync());
         }
     }
     public partial class Network
@@ -490,6 +562,8 @@ namespace ZeroTier
     {
         [JsonProperty("target", NullValueHandling = NullValueHandling.Ignore)]
         public string Target { get; set; }
+        [JsonProperty("via", NullValueHandling = NullValueHandling.Ignore)]
+        public string Via { get; set; }
     }
 
     public partial class Rule
